@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% block content %}
+<!-- Add the overlay div at the top of the body -->
+<div id="loading-overlay" class="hidden fixed inset-0 bg-gray-900 bg-opacity-50 z-50 flex items-center justify-center">
+    <div class="bg-white p-8 rounded-lg shadow-lg text-center">
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+        <p class="text-lg font-medium text-gray-700">{{ get_message('networkwait') }}</p>
+    </div>
+</div>
+
+<div class="bg-white rounded-lg shadow-md p-6">
+    <h2 class="text-2xl font-bold mb-4">{{ get_message('bridge_configuration') }}</h2>
+    
+    <div class="mb-6">
+        <form method="POST">
+            <div class="mb-6">
+                <label class="block text-gray-700 text-lg font-medium mb-4">
+                    {{ get_message('available_interfaces') }}
+                </label>
+                
+                {% if available_bridges %}
+                <div class="space-y-3">
+                    {% for bridge in available_bridges %}
+                    <div class="border rounded-lg p-4 {% if selected_bridge_name == bridge.name %}border-blue-500 bg-blue-50{% else %}border-gray-200{% endif %}">
+                        <div class="flex items-center">
+                            <input type="radio" 
+                                   class="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                                   name="selected_bridge" 
+                                   value="{{ bridge.name }}"
+                                   {% if selected_bridge_name == bridge.name %}checked{% endif %}
+                                   id="bridge-{{ bridge.name }}">
+                            <label class="ml-3 flex-1" for="bridge-{{ bridge.name }}">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center">
+                                        <div>
+                                            <div class="font-medium text-gray-900">{{ bridge.name }}</div>
+                                            {% if bridge.ip %}<div class="text-sm text-gray-500">{{ bridge.ip }}</div>{% endif %}
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center space-x-3">
+                                        <span id="status-{{ bridge.name }}" class="px-2 py-1 text-xs font-medium {% if bridge.is_up %}bg-green-100 text-green-800{% else %}bg-red-100 text-red-800{% endif %} rounded-full">
+                                            {% if bridge.is_up %}UP{% else %}DOWN{% endif %}
+                                        </span>
+                                    </div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-center py-8">
+                    <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <h3 class="mt-2 text-sm font-medium text-gray-900">{{ get_message('no_bridges_found') }}</h3>
+                </div>
+                {% endif %}
+            </div>
+
+            {% if selected_bridge_name %}
+            <div class="mb-4 p-4 rounded-lg bg-green-50 border border-green-200">
+                <div class="flex items-center">
+                    <svg class="w-5 h-5 text-green-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    <span class="text-green-800 font-medium">{{ get_message('primary') }}: {{ selected_bridge_name }}</span>
+                </div>
+            </div>
+            {% endif %}
+
+            <div id="warning-message" class="hidden mb-4 p-4 rounded-lg bg-yellow-50 border border-yellow-200">
+                <div class="flex items-center">
+                    <svg class="w-5 h-5 text-yellow-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                    </svg>
+                    <span class="text-yellow-800 font-medium">{{ get_message('netwarning') }}</span>
+                </div>
+            </div>
+
+            {% if available_bridges %}
+            <button type="submit" 
+                    class="w-full sm:w-auto px-6 py-3 bg-primary text-white font-medium rounded-lg focus:outline-none focus:ring-4 focus:ring-blue-300">
+                {{ get_message('netsave') }}
+            </button>
+            {% endif %}
+        </form>
+    </div>
+</div>
+
+{% block scripts %}
+<script>
+    let statusUpdateInterval;
+
+    function startStatusUpdates() {
+        updateBridgeStatus();
+        statusUpdateInterval = setInterval(updateBridgeStatus, 2000);
+    }
+
+    function stopStatusUpdates() {
+        clearInterval(statusUpdateInterval);
+    }
+
+    function showLoadingOverlay() {
+        stopStatusUpdates();
+        document.getElementById('loading-overlay').classList.remove('hidden');
+    }
+    
+    function checkHostAvailability() {
+        fetch('/api/health')
+            .then(response => {
+                if (response.ok) {
+                    window.location.reload();
+                } else {
+                    setTimeout(checkHostAvailability, 1000);
+                }
+            })
+            .catch(() => {
+                setTimeout(checkHostAvailability, 1000);
+            });
+    }
+
+    function showWarning() {
+        const warning = document.getElementById('warning-message');
+        warning.classList.remove('hidden');
+        setTimeout(() => {
+            warning.classList.add('hidden');
+        }, 4500);
+    }
+    
+    document.querySelector('form').addEventListener('submit', (e) => {
+        e.preventDefault();
+
+        const selectedBridge = document.querySelector('input[name="selected_bridge"]:checked');
+        if (!selectedBridge) {
+            showWarning();
+            return;
+        }
+
+        showLoadingOverlay();
+        fetch(e.target.action, {
+            method: 'POST',
+            body: new FormData(e.target)
+        }).then(() => {
+            setTimeout(checkHostAvailability, 2000);
+        });
+    });
+
+    function updateBridgeStatus() {
+        fetch('/api/bridge_status')
+            .then(response => response.json())
+            .then(data => {
+                // Update bridge status
+                data.available_bridges.forEach(bridge => {
+                    const statusBadge = document.querySelector(`#status-${bridge.name}`);
+                    if (statusBadge) {
+                        statusBadge.className = bridge.is_up ? 
+                            'px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full' :
+                            'px-2 py-1 text-xs font-medium bg-red-100 text-red-800 rounded-full';
+                        statusBadge.textContent = bridge.is_up ? 'UP' : 'DOWN';
+                    }
+                });
+            })
+            .catch(error => console.log('Bridge status update failed:', error));
+    }
+    
+    startStatusUpdates();
+</script>
+{% endblock %}
+{% endblock %}

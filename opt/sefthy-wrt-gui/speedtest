@@ -1,0 +1,8 @@
+#!/bin/bash
+
+dl=$(iperf3 -c 217.61.40.96 -P 4 -R -t 8 | grep receiver | tail -n1 | awk '{print $6 " " $7}')
+sleep 4
+ul=$(iperf3 -c 217.61.40.96 -P 4 -t 8 | grep receiver | tail -n1 | awk '{print $6 " " $7}')
+
+echo -e "Download: $dl"
+echo -e "Upload: $ul"

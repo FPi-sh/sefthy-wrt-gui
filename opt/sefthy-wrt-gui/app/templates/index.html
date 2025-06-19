@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    {% if not token %}
+    <div class="col-span-full bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4">
+        <p>{{ get_message('tokenwarning') }}. <a href="{{ url_for('token') }}" class="underline">{{ get_message('tokenwarningconfigure') }}</a>.</p>
+    </div>
+    {% endif %}
+    {% if not bridge_status %}
+    <div class="col-span-full bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4">
+        <p>{{ get_message('bridgewarning') }}. <a href="{{ url_for('network') }}" class="underline">{{ get_message('bridgewarningconfigure') }}</a>.</p>
+    </div>
+    {% endif %}
+    
+    <div class="bg-white rounded-lg shadow-md p-6">
+        <h2 class="text-xl font-bold mb-4">{{ get_message('system_status') }}</h2>
+        <div class="space-y-2">
+            <div class="border rounded p-4">
+                <p><strong>{{ get_message('connectorstatus') }}:</strong>
+                    <span id="connectorstatus">
+                        {{ get_message(connectorstatus) }}
+                    </span>
+                </p>
+                {% if vpnstatus %} 
+                <p><strong>{{ get_message('vpnstatus') }}:</strong>
+                    <span id="vpnstatus" class="{% if vpnstatus == 'UP' %}text-green-500{% else %}text-red-500{% endif %}">
+                                {{ vpnstatus }}
+                    </span>
+                </p>
+                {% endif %}
+                <p><strong>{{ get_message('uptime') }}:</strong> <span id="uptime">{{ uptime }}</span></p>
+                <p><strong>{{ get_message('load') }}</strong> <span id="load">{{ load }}</span>%</p>
+            </div>
+            <div class="h-64">
+                <canvas id="metricsChart"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <script src="{{url_for('static', filename='js/chart.js')}}"></script>
+    <script>
+    function updateSystemStatus() {
+        fetch('/api/system_status')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('uptime').textContent = data.uptime;
+                document.getElementById('load').textContent = data.load;
+                document.getElementById('connectorstatus').textContent = data.connectorstatus;
+                vpnstatus= document.getElementById('vpnstatus');
+                if (vpnstatus) {
+                    vpnstatus.textContent = data.vpnstatus;
+                    vpnstatus.className = (data.vpnstatus == 'UP') ? 
+                                'text-green-500' :
+                                'text-red-500';
+                }
+            });
+    }
+    setInterval(updateSystemStatus, 5000);
+
+    let chart;
+
+    function updateChart() {
+    fetch('/metrics')
+        .then(response => response.json())
+        .then(data => {
+            if (!chart) {
+                const ctx = document.getElementById('metricsChart').getContext('2d');
+                
+                // Create gradients
+                const cpuGradient = ctx.createLinearGradient(0, 0, 0, 400);
+                cpuGradient.addColorStop(0, 'rgba(29, 68, 94, 0.8)');
+                cpuGradient.addColorStop(1, 'rgba(29, 68, 94, 0.2)');
+                
+                const ramGradient = ctx.createLinearGradient(0, 0, 0, 400);
+                ramGradient.addColorStop(0, 'rgba(181, 214, 61, 0.8)');
+                ramGradient.addColorStop(1, 'rgba(181, 214, 61, 0.2)');
+
+                const options = {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100
+                        }
+                    },
+                    elements: {
+                        point: {
+                            radius: 0,
+                            hitRadius: 10,
+                            hoverRadius: 5
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true
+                        }
+                    }
+                };
+                
+                chart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.timestamps,
+                        datasets: [{
+                            label: 'CPU %',
+                            data: data.cpu,
+                            borderColor: 'rgb(29, 68, 94)',
+                            backgroundColor: cpuGradient,
+                            fill: true,
+                            tension: 0.4
+                        }, {
+                            label: 'RAM %',
+                            data: data.ram,
+                            borderColor: 'rgb(181, 214, 61)',
+                            backgroundColor: ramGradient,
+                            fill: true,
+                            tension: 0.4
+                        }]
+                    },
+                    options: options
+                });
+            } else {
+                chart.data.labels = data.timestamps;
+                chart.data.datasets[0].data = data.cpu;
+                chart.data.datasets[1].data = data.ram;
+                chart.update();
+            }
+        });
+    }
+
+    // Update every 10 seconds
+    updateChart();
+    setInterval(updateChart, 10000);
+    </script>
+    
+
+    <div class="bg-white rounded-lg shadow-md p-6">
+        <h2 class="text-xl font-bold mb-4">{{ get_message('interfaces') }}</h2>
+        {% if bridge_status %}
+        <div class="space-y-4">
+            <div class="border rounded p-4">
+                <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center">
+                        <span class="px-2 py-1 text-sm bg-gray-200 rounded">Cloud Extension Interface</span>
+                        <span class="ml-2 font-medium">{{ bridge_status.name }}</span>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <span id="bridge-status" class="{% if bridge_status.is_up %}text-green-500{% else %}text-red-500{% endif %}">
+                            {{ 'UP' if bridge_status.is_up else 'DOWN' }}
+                        </span>
+                        {% if bridge_status.ip != "N/A" %}
+                        <span id="bridge-ip" class="text-gray-600">{{ bridge_status.ip }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                {% if bridge_status.ports %}
+                <div class="mt-3">
+                    <div class="flex flex-wrap gap-2">
+                        {% for port in bridge_status.ports %}
+                        <div class="flex items-center justify-between bg-gray-50 rounded p-2 min-w-0">
+                            <div class="flex items-center">
+                                <span class="mr-2">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16px" height="16px" viewBox="0 0 24 24"
+                                            id="Layer_1" data-name="Layer 1">
+                                            <defs>
+                                                <style xmlns="http://www.w3.org/2000/svg">
+                                                    .cls-1 {
+                                                        fill: none;
+                                                        stroke: #020202;
+                                                        stroke-miterlimit: 10;
+                                                        stroke-width: 1.91px;
+                                                    }
+                                                </style>
+                                            </defs>
+                                            <rect class="cls-1" x="1.5" y="1.5" width="21" height="21" rx="1.91"></rect>
+                                            <polygon class="cls-1"
+                                                points="5.32 6.27 5.32 13.91 7.23 13.91 7.23 15.82 10.09 15.82 10.09 17.73 13.91 17.73 13.91 15.82 16.77 15.82 16.77 13.91 18.68 13.91 18.68 6.27 5.32 6.27">
+                                            </polygon>
+                                            <line class="cls-1" x1="8.18" y1="9.14" x2="8.18" y2="6.27"></line>
+                                            <line class="cls-1" x1="12" y1="9.14" x2="12" y2="6.27"></line>
+                                            <line class="cls-1" x1="15.82" y1="9.14" x2="15.82" y2="6.27"></line>
+                                        </svg>
+                                </span>
+                                <span class="text-sm">{{ port }}</span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    
+</div>
+
+<script>
+// Aggiungi questa funzione per aggiornare lo stato del bridge
+function updateBridgeStatus() {
+    {% if bridge_status %}
+    fetch('/api/bridge_status')
+        .then(response => response.json())
+        .then(data => {
+            if (data.selected_bridge) {
+                const selectedBridge = data.available_bridges.find(b => b.name === data.selected_bridge);
+                if (selectedBridge) {
+                    const statusElement = document.getElementById('bridge-status');
+                    const ipElement = document.getElementById('bridge-ip');
+                    
+                    if (statusElement) {
+                        statusElement.className = selectedBridge.is_up ? 'text-green-500' : 'text-red-500';
+                        statusElement.textContent = selectedBridge.is_up ? 'UP' : 'DOWN';
+                    }
+                    
+                    if (ipElement && selectedBridge.ip !== 'N/A') {
+                        ipElement.textContent = selectedBridge.ip;
+                    }
+                }
+            }
+        })
+        .catch(error => console.log('Bridge status update failed:', error));
+    {% endif %}
+}
+
+// Aggiungi l'aggiornamento del bridge status all'intervallo esistente
+setInterval(function() {
+    updateSystemStatus();
+    updateBridgeStatus();
+}, 5000);
+</script>
+{% endblock %}

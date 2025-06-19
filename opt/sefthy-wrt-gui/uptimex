@@ -1,0 +1,3 @@
+#!/bin/bash
+
+awk '{printf("%d giorni, %02d ore, %02d minuti\n",($1/60/60/24),($1/60/60%24),($1/60%60))}' /proc/uptime | sed -e 's/, 0/, /' -e 's/0 giorni, //' -e 's/1 giorni/1 giorno/' -e 's/1 ore/1 ora/'
