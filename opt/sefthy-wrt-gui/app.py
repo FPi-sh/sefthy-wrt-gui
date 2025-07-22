@@ -208,7 +208,7 @@ def download_logs():
                     zf.write(file_path, arcname)
         
         try:
-            logread_output = subprocess.check_output(['logread'], text=True)
+            logread_output = subprocess.check_output(['cat /var/log/messages'], text=True)
             zf.writestr('logread.txt', logread_output)
         except subprocess.CalledProcessError:
             zf.writestr('logread.txt', 'Error getting logs')
